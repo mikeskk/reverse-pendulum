@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stick Balancing Simulation</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <!-- <script src="/matter-js/build/matter.js"></script> -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Reverse Pendulum</h2>
+    <canvas id="angularVelocityChart" width="400" height="200"></canvas>
+    <button onClick="isPaused=!isPaused;requestAnimationFrame(update)">Play/Pause</button>
+    <button onClick="location.reload()">Reset</button>
+    <label for="angleInput">init Angle Fraction (*Pi):</label>
+    <input type="text" id="anglenput" oninput="validateInput(this)" value="5/6" />
+    <label for="offsetInput">init Position Offset (from center):</label>
+    <input type="number" id="offsetInput" value="0" />
+    <button onClick="startSimulation();">Recalculate</button>
+    <script>
+      function validateInput(input) {
+        // Allow only digits and a single fraction character '/'
+        input.value = input.value.replace(/[^0-9/.]/g, "").replace(/(\/.*\/)/, "/");
+      }
+      function startSimulation(initAngle = (1 - 10 / 60) * Math.PI) {
+        World.clear(world);
+        Engine.clear(engine);
+        Runner.stop(runner);
+        // create the ground, moving block, and the stick
+        const ground = Bodies.rectangle(
+          window.innerWidth / 2,
+          380 - 100,
+          window.innerWidth - 20,
+          20,
+          {
+            isStatic: true,
+            friction: 0.00001 * 0,
+            frictionStatic: 0.00001 * 0,
+          }
+        );
+        const movingBlock = Bodies.rectangle(render.options.width / 2, 360 - 100, 100, 20, {
+          density: 0.01,
+          frictionAir: 0.00001 * 0,
+          friction: 0.00001 * 0,
+          frictionStatic: 0.00001 * 0,
+        });
+        const fallingBlock = Bodies.rectangle(render.options.width / 7, 160, 20, 20, {
+          density: 0.01,
+          frictionAir: 0.00001 * 0,
+          friction: 0.00001 * 0,
+          frictionStatic: 0.00001 * 0,
+          collisionFilter: {
+            category: 0x0001,
+            mask: 0x0000, // stick doesn't collide with any other body
+          },
+        });
+        const fallingBlock2 = Bodies.rectangle(170, 160, 20, 20, {
+          density: 0.0001,
+          frictionAir: 0.00001 * 0,
+          friction: 0.00001 * 0,
+          frictionStatic: 0.00001 * 0,
+        });
+        const stick = Bodies.rectangle(
+          render.options.width / 2 + 100 * Math.sin(initAngle),
+          360 - 100 * Math.cos(initAngle) - 100,
+          10,
+          200,
+          {
+            density: 0.0001,
+            frictionAir: 0.00001 * 0,
+            friction: 0.00001 * 0,
+            collisionFilter: {
+              category: 0x0001,
+              mask: 0x0000, // stick doesn't collide with any other body
+            },
+          }
+        );
+        engine.constraintIterations = 40;
+
+        const stickBlockConstraint = Constraint.create({
+          bodyB: stick,
+          bodyA: movingBlock,
+          pointB: { x: 0, y: 100 },
+          pointA: { x: 0, y: 0 },
+          length: 0,
+          stiffness: 1,
+        });
+
+        // set the initial angle of the stick
+        Body.setAngle(stick, initAngle);
+
+        // add bodies and constraints to the world
+        World.add(world, [
+          ground,
+          movingBlock,
+          stick,
+          stickBlockConstraint,
+          fallingBlock,
+          // fallingBlock2,
+        ]);
+        Render.run(render);
+      }
+      const {
+        Engine,
+        Render,
+        Runner,
+        Composites,
+        Common,
+        World,
+        Bodies,
+        Body,
+        Constraint,
+        MouseConstraint,
+        Mouse,
+        Events,
+      } = Matter;
+
+      // create the engine and the world
+      const engine = Engine.create();
+      let isPaused = true;
+      engine.timing.timeScale = 1;
+      engine.enableSleeping = false;
+
+      const world = engine.world;
+
+      // create the renderer and the runner
+      const render = Render.create({
+        element: document.body,
+        engine: engine,
+        options: {
+          width: window.innerWidth,
+          height: 600,
+          wireframes: false,
+        },
+      });
+      const runner = Runner.create();
+      // (1 - 10 / 60) for downwards
+      const initAngle = (1 - 10 / 60) * Math.PI;
+
+      // create the ground, moving block, and the stick
+      const ground = Bodies.rectangle(
+        window.innerWidth / 2,
+        380 - 100,
+        window.innerWidth - 20,
+        20,
+        {
+          isStatic: true,
+          friction: 0.00001 * 0,
+          frictionStatic: 0.00001 * 0,
+        }
+      );
+      const movingBlock = Bodies.rectangle(render.options.width / 2, 360 - 100, 100, 20, {
+        density: 0.01,
+        frictionAir: 0.00001 * 0,
+        friction: 0.00001 * 0,
+        frictionStatic: 0.00001 * 0,
+      });
+      const fallingBlock = Bodies.rectangle(render.options.width / 7, 160, 20, 20, {
+        density: 0.01,
+        frictionAir: 0.00001 * 0,
+        friction: 0.00001 * 0,
+        frictionStatic: 0.00001 * 0,
+        collisionFilter: {
+          category: 0x0001,
+          mask: 0x0000, // stick doesn't collide with any other body
+        },
+      });
+      const fallingBlock2 = Bodies.rectangle(170, 160, 20, 20, {
+        density: 0.0001,
+        frictionAir: 0.00001 * 0,
+        friction: 0.00001 * 0,
+        frictionStatic: 0.00001 * 0,
+      });
+      const stick = Bodies.rectangle(
+        render.options.width / 2 + 100 * Math.sin(initAngle),
+        360 - 100 * Math.cos(initAngle) - 100,
+        10,
+        200,
+        {
+          density: 0.0001,
+          frictionAir: 0.00001 * 0,
+          friction: 0.00001 * 0,
+          collisionFilter: {
+            category: 0x0001,
+            mask: 0x0000, // stick doesn't collide with any other body
+          },
+        }
+      );
+      engine.constraintIterations = 40;
+
+      const stickBlockConstraint = Constraint.create({
+        bodyB: stick,
+        bodyA: movingBlock,
+        pointB: { x: 0, y: 100 },
+        pointA: { x: 0, y: 0 },
+        length: 0,
+        stiffness: 1,
+      });
+
+      // set the initial angle of the stick
+      Body.setAngle(stick, initAngle);
+
+      // add bodies and constraints to the world
+      World.add(world, [
+        ground,
+        movingBlock,
+        stick,
+        stickBlockConstraint,
+        fallingBlock,
+        // fallingBlock2,
+      ]);
+
+      // PID controller gains
+      const Kp_stick = 2; // Proportional gain for stick angle
+      const Ki_stick = 0.01 * 0; // Integral gain for stick angle
+      const Kd_stick = 8; // Derivative gain for stick angle
+      const Kp_block = 0.001; // Proportional gain for block position
+      const targetX = movingBlock.position.x; // Target X position for the block
+
+      let prevAngleError = stick.angle;
+      let integralAngleError = 0;
+      let angleError = 0;
+      let totalForce = 0;
+      let applyExtra = false;
+      let controlPaused = false;
+      // let direction = 1;
+      let applyCount = 0;
+      let balance = false;
+      const force = 110;
+      //   Body.setAngularVelocity(stick, 0.02);
+
+      // Chart.js setup
+      const chartCanvas = document.getElementById("angularVelocityChart");
+      const chartContext = chartCanvas.getContext("2d");
+      const chartData = {
+        labels: [],
+        datasets: [
+          {
+            label: "Velocity",
+            data: [],
+            borderColor: "rgba(75, 192, 192, 1)",
+            borderWidth: 1,
+          },
+          {
+            label: "Position",
+            data: [],
+            borderColor: "rgba(25, 92, 192, 1)",
+            borderWidth: 1,
+          },
+        ],
+      };
+      const chartOptions = {
+        scales: {
+          x: {
+            title: {
+              display: true,
+              text: "Time (frames)",
+            },
+          },
+          y: {
+            title: {
+              display: true,
+              text: "Velocity",
+            },
+          },
+        },
+      };
+      const angularVelocityChart = new Chart(chartContext, {
+        type: "line",
+        data: chartData,
+        options: chartOptions,
+      });
+      let frameCounterObj = { value: 0 };
+
+      let frameCounter = 0;
+      let forceFrameScale = 1;
+      function waitForVariableChange(variable, change, callback) {
+        const initialValue = variable.value;
+        // console.log(initialValue);
+        const intervalId = setInterval(() => {
+          //   console.log(
+          //     `${variable.value} --  ${initialValue} -- ${
+          //       Math.abs(variable - initialValue) >= change
+          //     },${Math.abs(variable - initialValue)}, ${change}`
+          //   );
+
+          if (Math.abs(variable.value - initialValue) >= change) {
+            clearInterval(intervalId);
+            console.log("frameCounter has changed by 100:", change);
+            callback();
+          }
+        }, 5); // Check the variable every 100ms, adjust the interval as needed
+      }
+      function isBodyOutsideViewport(
+        body,
+        viewportWidth = render.options.width,
+        viewportHeight = render.options.height
+      ) {
+        const bounds = body.bounds;
+
+        if (
+          bounds.min.x > viewportWidth ||
+          bounds.min.y > viewportHeight ||
+          bounds.max.x < 0 ||
+          bounds.max.y < 0
+        ) {
+          return true;
+        }
+        return false;
+      }
+      Events.on(engine, "beforeUpdate", function (event) {
+        console.log(
+          "beforeUpdate",
+          movingBlock.velocity.x,
+          "--",
+          movingBlock.position.x,
+          "--",
+          event.timestamp,
+          "--",
+          frameCounterObj.value
+        );
+      });
+      Events.on(engine, "afterUpdate", function (event) {
+        console.log(
+          "afterUpdate",
+          movingBlock.velocity.x,
+          "--",
+          movingBlock.position.x,
+          "--",
+          event.timestamp,
+          "--",
+          frameCounterObj.value
+        );
+      });
+      Events.on(engine, "afterUpdate", function () {
+        // Update chart data
+        console.log(frameCounterObj.value);
+        chartData.labels.push(frameCounterObj.value);
+        // chartData.datasets[0].data.push(stick.angularVelocity);
+        chartData.datasets[0].data.push(movingBlock.velocity.x);
+        chartData.datasets[1].data.push(movingBlock.position.x - 400);
+        // chartData.datasets[0].data.push(movingBlock.force.x);
+        // frameCounter++;
+        // Calculate angle error and its derivative and integral
+        angleError = stick.angle;
+        angleError =
+          stick.angle > 0
+            ? stick.angle % (2 * Math.PI) > Math.PI
+              ? 1 * ((stick.angle % (2 * Math.PI)) - Math.PI * 2)
+              : 1 * (stick.angle % (2 * Math.PI))
+            : stick.angle % (2 * Math.PI) < -Math.PI
+            ? 1 * ((stick.angle % (2 * Math.PI)) + Math.PI * 2)
+            : 1 * (stick.angle % (2 * Math.PI));
+        const dAngleError = angleError - prevAngleError;
+        integralAngleError += angleError;
+
+        // Calculate the force needed to correct the angle error using the PID controller
+        const force_angle =
+          1 * (Kp_stick * angleError + Ki_stick * integralAngleError + Kd_stick * dAngleError);
+
+        // Calculate position error for the block
+        const positionError = targetX - movingBlock.position.x;
+
+        // Calculate the force needed to correct the position error using the P controller
+        const force_position = Kp_block * positionError;
+
+        // Calculate the total force to apply to the moving block
+        // totalForce = 1 * force_angle;
+        // console.log(frameCounter);
+        console.log("last delta", engine.timing.lastDelta);
+        if (Math.abs(angleError) > Math.PI / 2 && !applyExtra && applyCount == 0) {
+          applyCount++;
+          applyExtra = true;
+          totalForce = 20 / engine.timing.lastDelta;
+
+          waitForVariableChange(frameCounterObj, 2 * 5 - 1, () => {
+            applyExtra = false;
+            // direction = 1;
+            console.log("frameCounter has changed by 100:", frameCounter);
+          });
+        } else if (Math.abs(angleError) > Math.PI / 2 && !applyExtra && applyCount == 1) {
+          applyCount++;
+          applyExtra = true;
+          totalForce = -40 / engine.timing.lastDelta;
+          waitForVariableChange(frameCounterObj, 1 * 5 - 1, () => {
+            applyExtra = false;
+            totalForce = 0;
+            console.log("frameCounter has changed by 100:", frameCounter, "--", totalForce);
+          });
+        }
+        // if (applyExtra) {
+        totalForce = totalForce;
+        // }
+        console.log("total force:", totalForce);
+        if (
+          Math.abs(angleError) < Math.PI / 6 &&
+          Math.abs(movingBlock.velocity.x) < 1 &&
+          Math.abs(stick.angularVelocity) < 0.04 &&
+          Math.abs(positionError) < 390
+        ) {
+          balance = true;
+        }
+        // if within range, not paused, not starting up
+        if ((Math.abs(positionError) < 390 && !controlPaused && !applyExtra) || balance) {
+          totalForce = balance ? force_angle : 0;
+        }
+        // else if not paused, not starting up
+        else if (!controlPaused && !applyExtra) {
+          totalForce = force_position;
+          controlPaused = true;
+          setTimeout(() => {
+            controlPaused = false;
+          }, 3000);
+        }
+        // else if (!applyExtra) {
+        //   totalForce = force_position * 0;
+        // }
+
+        // Apply the force to the moving block
+        Body.applyForce(
+          movingBlock,
+          { x: movingBlock.position.x, y: movingBlock.position.y },
+          { x: totalForce, y: 0 }
+        );
+        // console.log(movingBlock.force.x);
+
+        // Update the previous angle error
+        prevAngleError = angleError;
+
+        // Update the angular velocity chart
+        angularVelocityChart.update();
+
+        // Display information on the canvas
+        if (
+          Math.abs(stick.position.x) > 800 ||
+          Math.abs(stick.position.y) > 800 ||
+          Math.abs(movingBlock.position.x) > 1000 ||
+          Math.abs(movingBlock.position.y) > 1000
+        ) {
+          // Stop the runner
+          Runner.stop(runner);
+        }
+        if (isBodyOutsideViewport(fallingBlock)) {
+          Body.setPosition(fallingBlock, { x: fallingBlock.position.x, y: 50 });
+          Body.setVelocity(fallingBlock, { x: 0, y: 0 });
+        }
+      });
+
+      Events.on(render, "afterRender", function () {
+        const context = render.context;
+        const blockPosition = movingBlock.position;
+        context.font = "16px Arial";
+        context.fillStyle = "white";
+        context.fillText(
+          `x: ${blockPosition.x.toFixed(2)}, y: ${blockPosition.y.toFixed(
+            2
+          )}, angle: ${stick.angle.toFixed(2)}, force: ${totalForce.toFixed(
+            6
+          )}, angleError: ${angleError.toFixed(2)}, positionError: ${(
+            targetX - movingBlock.position.x
+          ).toFixed(2)},condition ${
+            Math.abs(movingBlock.position.x) - targetX < 200 && !controlPaused
+          }, targetX: ${targetX}`,
+          10,
+          30
+        );
+        context.fillText(
+          `Vx: ${movingBlock.velocity.x.toFixed(
+            2
+          )}, control: ${controlPaused}, balance: ${balance}, angularVelocity: ${stick.angularVelocity.toFixed(
+            2
+          )},frameCounter: ${frameCounter},actualFrames: ${frameCounterObj.value}, ${
+            engine.timing.lastDelta
+          }`,
+          10,
+          50
+        );
+      });
+
+      // Create a mouse constraint and add it to the world
+      const mouse = Mouse.create(render.canvas);
+      const mouseConstraint = MouseConstraint.create(engine, {
+        mouse: mouse,
+        constraint: {
+          stiffness: 0.2,
+          render: {
+            visible: false,
+          },
+        },
+      });
+      World.add(world, mouseConstraint);
+
+      // Make the mouse constraint invisible
+      render.mouse = mouse;
+
+      // Listen for mouse down events
+      Events.on(mouseConstraint, "mousedown", function (event) {
+        // Calculate the vector between the mouse click and the stick's position
+        const dx = event.mouse.position.x - stick.position.x;
+        const dy = event.mouse.position.y - stick.position.y;
+        const forceDirection = { x: dx, y: dy };
+
+        // Normalize the vector and scale it by a constant factor
+        const forceMagnitude = 0.05;
+        const normalizedForceDirection = Matter.Vector.normalise(forceDirection);
+        const forceToApply = Matter.Vector.mult(normalizedForceDirection, forceMagnitude);
+
+        // Apply the force to the stick
+        Body.applyForce(stick, stick.position, forceToApply);
+      });
+
+      // Run the engine and the renderer
+      //   Runner.run(runner, engine);
+      const updateInterval = 2; // Update Matter.js engine every 5 frames
+      //   Events.on(engine, "tick", () => {
+      //     console.log("Tick event:", 12);
+      //   });
+      Render.run(render);
+      forceFrameScale = 1;
+      function update() {
+        frameCounter++;
+
+        if (frameCounter % updateInterval === 0) {
+          // Update Matter.js engine with a fixed time step
+          frameCounterObj.value++;
+          // Events.trigger(engine, "after", { timestamp: engine.timing.timestamp });
+
+          Engine.update(engine, 4);
+          // Events.trigger(engine, "afterTick", { timestamp: engine.timing.timestamp });
+        }
+
+        // Continue the loop
+        if (!isPaused && frameCounterObj.value < 8000) {
+          requestAnimationFrame(update);
+        }
+      }
+
+      // Start the custom update loop
+
+      requestAnimationFrame(update);
+    </script>
+  </body>
+</html>

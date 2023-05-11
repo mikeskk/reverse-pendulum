@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<!-- VERISON 2.0-->
+<html>
+<head>
+    <style>
+        .wrapper{
+            display: flex;
+            flex-direction: row;
+            height: fit-content;
+            /* padding:1px; */
+        }
+        /* .iframe-wrapper {
+            position: relative;
+            width: 100%;
+            padding-top: 50vw; 
+            overflow: hidden;
+        } */
+        canvas {
+            width:49vw;
+            height:49vw;
+        }
+        body{
+            margin: 0px;
+        }
+       
+    </style>
+</head>
+<h2>The Double Pendulum</h2>
+<div class="wrapper">
+    <div class="iframe-wrapper">
+        <canvas width="512" height="512" id="c1"  style="border:1px solid #d3d3d3;">
+        Your browser does not support the HTML5 canvas tag.</canvas></div>
+<div class="iframe-wrapper">
+<canvas id="c2" width="512" height="512" style="border:1px solid #d3d3d3;">
+    Your browser does not support the HTML5 canvas tag.</canvas>
+</div>
+</div>
+</br>
+
+<input type='button' onclick='initialize()' value='Pause/Play'>
+
+<input type='button' onclick='trajectory = trajectory + 1;' value='Cycle Trajectory'>
+<input type='button' onclick='location.reload()' value='Reset'>
+<label for="Manner of Integration">Choose integration style:</label>
+<select id = "Manner of Integration" name = "intStyle">
+    <option value = "explicitEuler" >Explicit Euler</option>
+    <option value = "implicitEuler" >Semi-Implicit Euler</option>
+    <option value = "Verlet" selected>Verlet</option>
+    <option value = "RK4">Runge-Kutta 4</option>
+</select>
+<br>
+Mass 1: <input type='number' id='m1' value= 1>
+Mass 2: <input type='number' id='m2' value= 1>
+Length 1:  <input type='number' id='l1' value= 4>
+Length 2 <input type='number' id='l2' value= 4>
+</br>
+Theta 1:  <input type='number' id='theta1' value= 90>
+Theta 2 <input type='number' id='theta2' value= 90>
+Omega 1:  <input type='number' id='omega1' value= 0>
+Omega 2 <input type='number' id='omega2' value= 0>
+</br>
+<input type="radio" id="single" name="displayType" value="single" checked>
+<label for="single">Single Integration</label>
+<input type="radio" id="all4" name="displayType" value="all4">
+<label for="single">Compare All 4 Integrations</label>
+<input type="radio" id="showChaos" name="displayType" value="showChaos">
+<label for="showChaos">Show Chaos (Verlet Integration)</label>
+<br>
+Perterbation <input type='number' id='perterb' value= 1>
+
+<script>
+
+//set up canvas/plotting
+var cnvs = document.getElementById('c1') ;
+var width=cnvs.width ;
+var height= cnvs.height ;
+var ctx = cnvs.getContext('2d') ;
+function getNum(id){ /* gets the number from the GUI using the id */
+    return eval(document.getElementById(id).value) ;
+}
+var cnvs2 = document.getElementById("c2");
+var width2=cnvs2.width ;
+var height2= cnvs2.height ;
+var ctx2 = cnvs2.getContext('2d') ;
+const minX = -10 ;
+const maxX = 10 ;
+const minY = -10 ;
+const maxY = 10 ;
+
+function Px(x){
+    return width*(x-minX)/(maxX-minX) ;
+}
+function Py(y){
+    return height*(maxY-y)/(maxY-minY) ;
+}
+/**
+ * Get the cartesian reprisentation of pendulum 1's location
+ * @param theta1
+ * @param length1
+ * @return map of form {x: xCoord, y : yCoord} for pendulum 1
+ * */
+function getCoords1() {
+    let xCoord = l1 * Math.sin(theta1);
+    let yCoord = -1 * l1 * Math.cos(theta1);
+    return {x : xCoord, y : yCoord};
+}
+function getCoords1General(theta1) {
+    let xCoord = l1 * Math.sin(theta1);
+    let yCoord = -1 * l1 * Math.cos(theta1);
+    return {x : xCoord, y : yCoord};
+}
+/**
+ * Get the cartesian reprisentation of pendulum 2's location
+ * @param angle1 theta1
+ * @param length1 l1
+ * @param angle2 theta2
+ * @param length2 l2
+ * @return map of form {x: xCoord, y : yCoord} for pendulum 2x
+ * */
+ function getCoords2() {
+    let xCoord = getCoords1()["x"] + l2 * Math.sin(theta2);
+    let yCoord = getCoords1()["y"] - l2 * Math.cos(theta2);
+    return {x : xCoord, y : yCoord};
+}
+function getCoords2General(theta1, theta2) {
+    let xCoord = getCoords1General(theta1)["x"] + l2 * Math.sin(theta2);
+    let yCoord = getCoords1General(theta1)["y"] - l2 * Math.cos(theta2);
+    return {x : xCoord, y : yCoord};
+}
+function getAlpha1(theta1, theta2, omega1, omega2) {
+    let term1 = -g * (2*m1 + m2) * Math.sin(theta1);
+    let term2 = -m2*g*Math.sin(theta1 - 2*theta2);
+    let term3 = -2*Math.sin(theta1 - theta2)*m2*(omega2*omega2*l2 + omega1*omega1*l1*Math.cos(theta1-theta2));
+    let denom = l1*(2*m1 + m2 - m2*Math.cos(2*m1 - 2*m2));
+    return (term1 + term2 + term3) / denom; 
+}
+function getAlpha2(theta1, theta2, omega1, omega2) {
+    let term1 = omega1*omega1*l1*(m1 + m2);
+    let term2 =g*(m1 + m2)*Math.cos(theta1);
+    let term3 = omega2*omega2*l2*m2*Math.cos(theta1 - theta2); 
+    let denom = l2*(2*m1 + m2 - m2*Math.cos(2*m1 - 2*m2));
+    return 2*Math.sin(theta1 - theta2)* (term1 + term2 + term3) / denom;
+}
+
+//declare variables, initialize constants
+const dt=.005;
+const nmax=3500;
+const g = 9.81;
+let m1;
+let m2;
+let theta1;
+let theta2;
+let omega1;
+let omega2;
+let l1;
+let l2;
+let running;
+let trajectory;
+let nn;
+let xp1;
+let xp2;
+let yp1;
+let yp2;
+let x1;
+let y1;
+let x2;
+let y2;
+let firstClick = true;
+let intStyle;
+let plotType;
+//for use in comparing all 4, or in show chaos
+let eeTheta1;
+let siTheta1;
+let vTheta1;
+let rk4Theta1;
+let eeTheta2;
+let siTheta2;
+let vTheta2;
+let rk4Theta2;
+let eeOmega1;
+let siOmega1;
+let vOmega1;
+let rk4Omega1;
+let eeOmega2;
+let siOmega2;
+let vOmega2;
+let rk4Omega2;
+let eex1;
+let six1;
+let vx1;
+let rk4x1;
+let eex2;
+let six2;
+let vx2;
+let rk4x2;
+let eey1;
+let siy1;
+let vy1;
+let rk4y1;
+let eey2;
+let siy2;
+let vy2;
+let rk4y2;
+let eex1a;
+let six1a;
+let vx1a;
+let rk4x1a;
+let eex2a;
+let six2a;
+let vx2a;
+let rk4x2a;
+let eey1a;
+let siy1a;
+let vy1a;
+let rk4y1a;
+let eey2a;
+let siy2a;
+let vy2a;
+let rk4y2a;
+function initialize() {
+    //initialize variables, run the function
+    if (firstClick == false) {
+        running = !running;
+        return;
+    }
+    var ele = document.getElementsByName('displayType'); 
+          for(i = 0; i < ele.length; i++) {
+            if(ele[i].checked) {
+                plotType = ele[i].value;
+            }
+          }
+    console.log(plotType)
+    firstClick = false;
+    m1 = getNum("m1");
+    m2 = getNum("m2");
+    theta1 = getNum("theta1") * Math.PI / 180;
+    theta2 = getNum("theta2") * Math.PI / 180;
+    omega1 = getNum("omega1");
+    omega2 = getNum("omega2");
+    l1 = getNum("l1");
+    l2 = getNum("l2");
+    x1 = getCoords1()["x"];
+    y1 = getCoords1()["y"];
+    x2 = getCoords2()["x"];
+    y2 = getCoords2()["y"];
+    intStyle = (document.getElementById("Manner of Integration")).value;
+    running = true;
+    trajectory = 0;
+    nn = 0;
+    if (plotType == "all4" || plotType == "showChaos") {
+        console.log("initializing all 4")
+        //set theta1, theta2, omega1, omega2
+        eeTheta1 = theta1;
+        siTheta1= theta1;
+        vTheta1 = theta1;
+        rk4Theta1 = theta1;
+        eeTheta2 = theta2;
+        siTheta2 = theta2;
+        vTheta2 = theta2;
+        rk4Theta2 = theta2;
+        eeOmega1 = omega1;
+        siOmega1 = omega1;
+        vOmega1 = omega1;
+        rk4Omega1 = omega1;
+        eeOmega2 = omega2;
+        siOmega2 = omega2;
+        vOmega2 = omega2;
+        rk4Omega2 = omega2;
+        //set x1, y1, x2, y2
+        eex1 = x1;
+        six1 = x1;
+        vx1 = x1;
+        rk4x1 = x1;
+        eex2 = x2;
+        six2 = x2;
+        vx2 = x2;
+        rk4x2 = x2;
+        eey1 = y1;
+        siy1 = y1;
+        vy1 = y1;
+        rk4y1 = y1;
+        eey2 = y2;
+        siy2 = y2;
+        vy2 = y2;
+        rk4y2 = y2;
+        //set x1a, y1a, x2a, y2a later
+        eex1a = new Array(nmax);
+        six1a = new Array(nmax);
+        vx1a = new Array(nmax);
+        rk4x1a = new Array(nmax);
+        eex2a = new Array(nmax);
+        six2a = new Array(nmax);
+        vx2a = new Array(nmax);
+        rk4x2a = new Array(nmax);
+        eey1a = new Array(nmax);
+        siy1a = new Array(nmax);
+        vy1a = new Array(nmax);
+        rk4y1a = new Array(nmax);
+        eey2a = new Array(nmax);
+        siy2a = new Array(nmax);
+        vy2a = new Array(nmax);
+        rk4y2a = new Array(nmax);
+        if (plotType == "showChaos") {
+            let perterbation = getNum("perterb");
+            perterbation /= 2 * Math.PI*10;
+            siTheta2 += perterbation;
+            vTheta2 += 2 * perterbation;
+            rk4Theta2 += 3 * perterbation; 
+        }
+    }
+    xp1 = new Array(nmax);
+    yp1 =  new Array(nmax);
+    xp2 = new Array(nmax);
+    yp2 =  new Array(nmax);
+    xp1[0] = x1;
+    xp2[0] = x2;
+    yp1[0] = y1;
+    yp2[0] = y2;
+    console.log(intStyle);
+    run();
+}
+
+ 
+function run(){
+    if (running && plotType == "single"){
+        trajectory = trajectory % 4;
+        ctx.clearRect(0, 0, cnvs.width, cnvs.height);
+        ++nn; //number of iteration
+
+        ctx.font = "20px Arial" ;
+        ctx.fillStyle = '#3b3b3b' ;
+
+        //update the angles
+        let tempTheta1 = theta1;
+        let tempTheta2 = theta2;
+        let tempOmega1 = omega1;
+        let tempOmega2 = omega2;
+        if (intStyle == "Verlet") {
+            theta1 += omega1 * dt + 0.5 * getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2) * dt * dt;
+            theta2 += omega2 * dt + 0.5 * getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2) * dt * dt;
+            omega1 += 0.5 * (getAlpha1(theta1, theta2, tempOmega1, tempOmega2) + getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2)) * dt;
+            omega2 += 0.5 * (getAlpha2(theta1, theta2, tempOmega1, tempOmega2) + getAlpha2(tempTheta1, tempTheta2, tempOmega1, tempOmega2)) * dt;
+        } else if (intStyle == "explicitEuler") {
+            theta1 += omega1 * dt;
+            theta2 += omega2 * dt;
+            omega1 += dt * getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2);
+            omega2 += dt * getAlpha2(tempTheta1, tempTheta2, tempOmega1, tempOmega2);
+        } else if (intStyle == "implicitEuler") {
+            omega1 += dt * getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2);
+            omega2 += dt * getAlpha2(tempTheta1, tempTheta2, tempOmega1, tempOmega2);
+            theta1 += omega1 * dt;
+            theta2 += omega2 * dt;
+        } else if (intStyle == "RK4") {
+            let k1t1 = omega1;
+            let k1w1 = getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2);
+            let k1t2 = omega2;
+            let k1w2 = getAlpha2(tempTheta1, tempTheta2, tempOmega1, tempOmega2);
+
+            let k2t1 = (tempOmega1 + dt * 0.5 * k1w1);
+            let k2w1 = getAlpha1(tempTheta1 + dt * 0.5 * k1t1, tempTheta2+ dt * 0.5 * k1t2, tempOmega1+ dt * 0.5 * k1w1, tempOmega2+ dt * 0.5 * k1w2);
+            let k2t2 = (tempOmega2 + dt * 0.5 * k1w2);
+            let k2w2 = getAlpha2(tempTheta1 + dt * 0.5 * k1t1, tempTheta2+ dt * 0.5 * k1t2, tempOmega1+ dt * 0.5 * k1w1, tempOmega2+ dt * 0.5 * k1w2);
+            
+            let k3t1 = (tempOmega1 + dt * 0.5 * k2w1);
+            let k3w1 = getAlpha1(tempTheta1 + dt * 0.5 * k2t1, tempTheta2+ dt * 0.5 * k2t2, tempOmega1+ dt * 0.5 * k2w1, tempOmega2+ dt * 0.5 * k2w2);
+            let k3t2 = (tempOmega2 + dt * 0.5 * k2w2);
+            let k3w2 = getAlpha2(tempTheta1 + dt * 0.5 * k2t1, tempTheta2+ dt * 0.5 * k2t2, tempOmega1+ dt * 0.5 * k2w1, tempOmega2+ dt * 0.5 * k2w2);
+            
+            let k4t1 = (tempOmega1 + dt * k3w1);
+            let k4w1 = getAlpha1(tempTheta1 + dt * k3t1, tempTheta2+ dt * k3t2, tempOmega1+ dt * k3w1, tempOmega2+ dt * k3w2);
+            let k4t2 = tempOmega2 + dt * k3w2;
+            let k4w2 = getAlpha2(tempTheta1 + dt * k3t1, tempTheta2+ dt * k3t2, tempOmega1+ dt * k3w1, tempOmega2+ dt * k3w2);
+            theta1 += dt/6 * (k1t1 + 2*k2t1 + 2*k3t1 + k4t1);
+            theta2 += dt/6 * (k1t2 + 2*k2t2 + 2*k3t2 + k4t2);
+            omega1 += dt/6 * (k1w1 + 2*k2w1 + 2*k3w1 + k4w1);
+            omega2 += dt/6 * (k1w2 + 2*k2w2 + 2*k3w2 + k4w2);
+        } else {
+            //ERROR THIS SHOULD NOT HAPPEN;
+            throw new Error("The integration style is undefined");
+        }
+        
+        //add data to position array
+        x1 = getCoords1()["x"];
+        y1 = getCoords1()["y"];
+        x2 = getCoords2()["x"];
+        y2 = getCoords2()["y"];
+        xp1[nn] = x1;
+        yp1[nn] = y1;
+        xp2[nn] = x2;
+        yp2[nn] = y2;
+        
+
+        //plot the tail
+        if (trajectory == 1) {
+            
+            for (let i = 100; i > 0; --i) {
+                ctx.globalAlpha = i ** 2 / 40000;
+                ctx.beginPath();
+                ctx.arc(Px(xp1[nn - 100 + i]), Py(yp1[nn - 100 + i]), 8 * i / 100, 0, Math.PI*2); //m1 trail
+                ctx.fillStyle = "#FF0000";
+                ctx.fill();
+                ctx.closePath()
+                ctx.beginPath();
+                ctx.arc(Px(xp2[nn - 100 + i]), Py(yp2[nn - 100 + i]), 8 * i / 100, 0, Math.PI*2); 
+                ctx.fillStyle = "#0000FF";
+                ctx.fill();
+                ctx.closePath()
+            }
+            ctx.globalAlpha = 1;
+
+        } else if (trajectory == 3) {
+            
+            for (let i = 1; i < nn; ++i) {  
+                ctx.beginPath();
+                ctx.lineWidth = 1;  
+                ctx.strokeStyle = "#0000FF";
+                ctx.moveTo(Px(xp2[i-1]),Py(yp2[i-1]));
+                ctx.lineTo(Px(xp2[i]),Py(yp2[i])) ;
+                ctx.stroke();
+                ctx.closePath();
+                
+                ctx.beginPath();
+                ctx.lineWidth = 1;  
+                ctx.strokeStyle = "#FF0000";
+                ctx.moveTo(Px(xp1[i-1]),Py(yp1[i-1]));
+                ctx.lineTo(Px(xp1[i]),Py(yp1[i])) ;
+                ctx.stroke();
+                ctx.closePath();
+            }
+            
+        } else if (trajectory == 2) {
+            for (let i = nn - 2000; i < nn; ++i) {  
+                ctx.beginPath();
+                ctx.lineWidth = 1;  
+                ctx.strokeStyle = "#0000FF";
+                ctx.moveTo(Px(xp2[i-1]),Py(yp2[i-1]));
+                ctx.lineTo(Px(xp2[i]),Py(yp2[i])) ;
+                ctx.stroke();
+                ctx.closePath();
+                
+                ctx.beginPath();
+                ctx.lineWidth = 1;  
+                ctx.strokeStyle = "#FF0000";
+                ctx.moveTo(Px(xp1[i-1]),Py(yp1[i-1]));
+                ctx.lineTo(Px(xp1[i]),Py(yp1[i])) ;
+                ctx.stroke();
+                ctx.closePath();
+            }
+        }
+        //Plot l1
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(Px(0),Py(0));
+        ctx.lineTo(Px(x1),Py(y1));
+        ctx.stroke();
+        ctx.closePath();
+
+        //plot l2
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(Px(x1),Py(y1));
+        ctx.lineTo(Px(x2),Py(y2));
+        ctx.stroke();
+        ctx.closePath();
+
+        //plot m1
+        ctx.beginPath();
+        ctx.arc(Px(x1), Py(y1), cnvs.width/50, 0, Math.PI*2); //this is the circle
+        ctx.fillStyle = "red";
+        ctx.fill();
+        ctx.closePath();
+
+        //plot m2
+        ctx.beginPath();
+        ctx.arc(Px(x2), Py(y2), cnvs2.width/50, 0, Math.PI*2); //this is the circle
+        ctx.fillStyle = "blue";
+        ctx.fill();
+        ctx.closePath();
+
+
+        ctx.strokeStyle = "black"
+        
+        //running=!running;
+        //plot full EOM
+        ctx2.beginPath();
+        ctx2.lineWidth = 1;  
+        ctx2.strokeStyle = "#0000FF";
+        ctx2.moveTo(Px(xp2[nn-1]),Py(yp2[nn-1]));
+        ctx2.lineTo(Px(xp2[nn]),Py(yp2[nn])) ;
+        ctx2.stroke();
+        ctx2.closePath();
+        
+        ctx2.beginPath();
+        ctx2.lineWidth = 1;  
+        ctx2.strokeStyle = "#FF0000";
+        ctx2.moveTo(Px(xp1[nn-1]),Py(yp1[nn-1]));
+        ctx2.lineTo(Px(xp1[nn]),Py(yp1[nn])) ;
+        ctx2.stroke();
+        ctx2.closePath();
+
+
+    } else if (running && plotType == "all4") {
+        ctx.clearRect(0, 0, cnvs.width, cnvs.height);
+        ++nn; //number of iteration
+
+        ctx.font = "20px Arial" ;
+        ctx.fillStyle = '#3b3b3b' ;
+
+        //update the angles
+        let tempTheta1;
+        let tempTheta2;
+        let tempOmega1;
+        let tempOmega2;
+        //Explicit Euler
+        tempTheta1 = eeTheta1;
+        tempTheta2 = eeTheta2;
+        tempOmega1 = eeOmega1;
+        tempOmega2 = eeOmega2;
+        eeTheta1 += eeOmega1 * dt;
+        eeTheta2 += eeOmega2 * dt;
+        eeOmega1 += dt * getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2);
+        eeOmega2 += dt * getAlpha2(tempTheta1, tempTheta2, tempOmega1, tempOmega2); 
+
+        x1 = getCoords1General(eeTheta1)["x"];
+        y1 = getCoords1General(eeTheta1)["y"];
+        x2 = getCoords2General(eeTheta1, eeTheta2)["x"];
+        y2 = getCoords2General(eeTheta1, eeTheta2)["y"];
+        eex1a[nn] = x1;
+        eey1a[nn] = y1;
+        eex2a[nn] = x2;
+        eey2a[nn] = y2;
+
+        //Semi Implicit Euler
+        tempTheta1 = siTheta1;
+        tempTheta2 = siTheta2;
+        tempOmega1 = siOmega1;
+        tempOmega2 = siOmega2;
+        siOmega1 += dt * getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2);
+        siOmega2 += dt * getAlpha2(tempTheta1, tempTheta2, tempOmega1, tempOmega2);
+        siTheta1 += siOmega1 * dt;
+        siTheta2 += siOmega2 * dt;
+
+        x1 = getCoords1General(siTheta1)["x"];
+        y1 = getCoords1General(siTheta1)["y"];
+        x2 = getCoords2General(siTheta1, siTheta2)["x"];
+        y2 = getCoords2General(siTheta1, siTheta2)["y"];
+        six1a[nn] = x1;
+        siy1a[nn] = y1;
+        six2a[nn] = x2;
+        siy2a[nn] = y2;
+
+        //Verlet
+        tempTheta1 = vTheta1;
+        tempTheta2 = vTheta2;
+        tempOmega1 = vOmega1;
+        tempOmega2 = vOmega2;
+        vTheta1 += vOmega1 * dt + 0.5 * getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2) * dt * dt;
+        vTheta2 += vOmega2 * dt + 0.5 * getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2) * dt * dt;
+        vOmega1 += 0.5 * (getAlpha1(vTheta1, vTheta2, tempOmega1, tempOmega2) + getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2)) * dt;
+        vOmega2 += 0.5 * (getAlpha2(vTheta1, vTheta2, tempOmega1, tempOmega2) + getAlpha2(tempTheta1, tempTheta2, tempOmega1, tempOmega2)) * dt;
+
+        x1 = getCoords1General(vTheta1)["x"];
+        y1 = getCoords1General(vTheta1)["y"];
+        x2 = getCoords2General(vTheta1, vTheta2)["x"];
+        y2 = getCoords2General(vTheta1, vTheta2)["y"];
+        vx1a[nn] = x1;
+        vy1a[nn] = y1;
+        vx2a[nn] = x2;
+        vy2a[nn] = y2;
+        //RK4
+        tempTheta1 = rk4Theta1;
+        tempTheta2 = rk4Theta2;
+        tempOmega1 = rk4Omega1;
+        tempOmega2 = rk4Omega2;
+        let k1t1 = rk4Omega1;
+        let k1w1 = getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2);
+        let k1t2 = rk4Omega2;
+        let k1w2 = getAlpha2(tempTheta1, tempTheta2, tempOmega1, tempOmega2);
+
+        let k2t1 = (tempOmega1 + dt * 0.5 * k1w1);
+        let k2w1 = getAlpha1(tempTheta1 + dt * 0.5 * k1t1, tempTheta2+ dt * 0.5 * k1t2, tempOmega1+ dt * 0.5 * k1w1, tempOmega2+ dt * 0.5 * k1w2);
+        let k2t2 = (tempOmega2 + dt * 0.5 * k1w2);
+        let k2w2 = getAlpha2(tempTheta1 + dt * 0.5 * k1t1, tempTheta2+ dt * 0.5 * k1t2, tempOmega1+ dt * 0.5 * k1w1, tempOmega2+ dt * 0.5 * k1w2);
+        
+        let k3t1 = (tempOmega1 + dt * 0.5 * k2w1);
+        let k3w1 = getAlpha1(tempTheta1 + dt * 0.5 * k2t1, tempTheta2+ dt * 0.5 * k2t2, tempOmega1+ dt * 0.5 * k2w1, tempOmega2+ dt * 0.5 * k2w2);
+        let k3t2 = (tempOmega2 + dt * 0.5 * k2w2);
+        let k3w2 = getAlpha2(tempTheta1 + dt * 0.5 * k2t1, tempTheta2+ dt * 0.5 * k2t2, tempOmega1+ dt * 0.5 * k2w1, tempOmega2+ dt * 0.5 * k2w2);
+        
+        let k4t1 = (tempOmega1 + dt * k3w1);
+        let k4w1 = getAlpha1(tempTheta1 + dt * k3t1, tempTheta2+ dt * k3t2, tempOmega1+ dt * k3w1, tempOmega2+ dt * k3w2);
+        let k4t2 = tempOmega2 + dt * k3w2;
+        let k4w2 = getAlpha2(tempTheta1 + dt * k3t1, tempTheta2+ dt * k3t2, tempOmega1+ dt * k3w1, tempOmega2+ dt * k3w2);
+        rk4Theta1 += dt/6 * (k1t1 + 2*k2t1 + 2*k3t1 + k4t1);
+        rk4Theta2 += dt/6 * (k1t2 + 2*k2t2 + 2*k3t2 + k4t2);
+        rk4Omega1 += dt/6 * (k1w1 + 2*k2w1 + 2*k3w1 + k4w1);
+        rk4Omega2 += dt/6 * (k1w2 + 2*k2w2 + 2*k3w2 + k4w2);
+
+        x1 = getCoords1General(rk4Theta1)["x"];
+        y1 = getCoords1General(rk4Theta1)["y"];
+        x2 = getCoords2General(rk4Theta1, rk4Theta2)["x"];
+        y2 = getCoords2General(rk4Theta1, rk4Theta2)["y"];
+        rk4x1a[nn] = x1;
+        rk4y1a[nn] = y1;
+        rk4x2a[nn] = x2;
+        rk4y2a[nn] = y2;
+        //plot each integration style (balls and ropes)
+
+
+//------Explicit Euler
+        //Plot l1
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(Px(0),Py(0));
+        ctx.lineTo(Px(eex1a[nn]),Py(eey1a[nn]));
+        ctx.stroke();
+        ctx.closePath();
+
+        //plot l2
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(Px(eex1a[nn]),Py(eey1a[nn]));
+        ctx.lineTo(Px(eex2a[nn]),Py(eey2a[nn]));
+        ctx.stroke();
+        ctx.closePath();
+
+        //plot m1
+        ctx.beginPath();
+        ctx.arc(Px(eex1a[nn]), Py(eey1a[nn]), 10, 0, Math.PI*2); //this is the circle
+        ctx.fillStyle = "#fa6800";
+        ctx.fill();
+        ctx.closePath();
+
+        //plot m2
+        ctx.beginPath();
+        ctx.arc(Px(eex2a[nn]), Py(eey2a[nn]), 10, 0, Math.PI*2); //this is the circle
+        ctx.fillStyle = "#090759";
+        ctx.fill();
+        ctx.closePath();
+
+        //plot full EOM
+        ctx2.beginPath();
+        ctx2.lineWidth = 1;  
+        ctx2.strokeStyle = "#090759";
+        ctx2.moveTo(Px(eex2a[nn-1]),Py(eey2a[nn-1]));
+        ctx2.lineTo(Px(eex2a[nn]),Py(eey2a[nn])) ;
+        ctx2.stroke();
+        ctx2.closePath();
+        
+        ctx2.beginPath();
+        ctx2.lineWidth = 1;  
+        ctx2.strokeStyle = "#fa6800";
+        ctx2.moveTo(Px(eex1a[nn-1]),Py(eey1a[nn-1]));
+        ctx2.lineTo(Px(eex1a[nn]),Py(eey1a[nn])) ;
+        ctx2.stroke();
+        ctx2.closePath();
+
+
+        ctx.strokeStyle = "black"
+
+//------Semi Implicit Euler
+
+        //Plot l1
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(Px(0),Py(0));
+        ctx.lineTo(Px(six1a[nn]),Py(siy1a[nn]));
+        ctx.stroke();
+        ctx.closePath();
+
+        //plot l2
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(Px(six1a[nn]),Py(siy1a[nn]));
+        ctx.lineTo(Px(six2a[nn]),Py(siy2a[nn]));
+        ctx.stroke();
+        ctx.closePath();
+
+        //plot m1
+        ctx.beginPath();
+        ctx.arc(Px(six1a[nn]), Py(siy1a[nn]), 10, 0, Math.PI*2); //this is the circle
+        ctx.fillStyle = "#fa00e1";
+        ctx.fill();
+        ctx.closePath();
+
+        //plot m2
+        ctx.beginPath();
+        ctx.arc(Px(six2a[nn]), Py(siy2a[nn]), 10, 0, Math.PI*2); //this is the circle
+        ctx.fillStyle = "#00fafa";
+        ctx.fill();
+        ctx.closePath();
+
+        //plot full EOM
+        ctx2.beginPath();
+        ctx2.lineWidth = 1;  
+        ctx2.strokeStyle = "#00fafa";
+        ctx2.moveTo(Px(six2a[nn-1]),Py(siy2a[nn-1]));
+        ctx2.lineTo(Px(six2a[nn]),Py(siy2a[nn])) ;
+        ctx2.stroke();
+        ctx2.closePath();
+        
+        ctx2.beginPath();
+        ctx2.lineWidth = 1;  
+        ctx2.strokeStyle = "#fa00e1";
+        ctx2.moveTo(Px(six1a[nn-1]),Py(siy1a[nn-1]));
+        ctx2.lineTo(Px(six1a[nn]),Py(siy1a[nn])) ;
+        ctx2.stroke();
+        ctx2.closePath();
+
+        ctx.strokeStyle = "black"
+
+//------Verlet
+
+        //Plot l1
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(Px(0),Py(0));
+        ctx.lineTo(Px(vx1a[nn]),Py(vy1a[nn]));
+        ctx.stroke();
+        ctx.closePath();
+
+        //plot l2
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(Px(vx1a[nn]),Py(vy1a[nn]));
+        ctx.lineTo(Px(vx2a[nn]),Py(vy2a[nn]));
+        ctx.stroke();
+        ctx.closePath();
+
+        //plot m1
+        ctx.beginPath();
+        ctx.arc(Px(vx1a[nn]), Py(vy1a[nn]), 10, 0, Math.PI*2); //this is the circle
+        ctx.fillStyle = "#7d07a8";
+        ctx.fill();
+        ctx.closePath();
+
+        //plot m2
+        ctx.beginPath();
+        ctx.arc(Px(vx2a[nn]), Py(vy2a[nn]), 10, 0, Math.PI*2); //this is the circle
+        ctx.fillStyle = "#cb73eb";
+        ctx.fill();
+        ctx.closePath();
+
+        //plot full EOM
+        ctx2.beginPath();
+        ctx2.lineWidth = 1;  
+        ctx2.strokeStyle = "#cb73eb";
+        ctx2.moveTo(Px(vx2a[nn-1]),Py(vy2a[nn-1]));
+        ctx2.lineTo(Px(vx2a[nn]),Py(vy2a[nn])) ;
+        ctx2.stroke();
+        ctx2.closePath();
+        
+        ctx2.beginPath();
+        ctx2.lineWidth = 1;  
+        ctx2.strokeStyle = "#7d07a8";
+        ctx2.moveTo(Px(vx1a[nn-1]),Py(vy1a[nn-1]));
+        ctx2.lineTo(Px(vx1a[nn]),Py(vy1a[nn])) ;
+        ctx2.stroke();
+        ctx2.closePath();
+        ctx.strokeStyle = "black"
+//------RK4
+        //Plot l1
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(Px(0),Py(0));
+        ctx.lineTo(Px(rk4x1a[nn]),Py(rk4y1a[nn]));
+        ctx.stroke();
+        ctx.closePath();
+
+        //plot l2
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(Px(rk4x1a[nn]),Py(rk4y1a[nn]));
+        ctx.lineTo(Px(rk4x2a[nn]),Py(rk4y2a[nn]));
+        ctx.stroke();
+        ctx.closePath();
+
+        //plot m1
+        ctx.beginPath();
+        ctx.arc(Px(rk4x1a[nn]), Py(rk4y1a[nn]), 10, 0, Math.PI*2); //this is the circle
+        ctx.fillStyle = "#FF0000";
+        ctx.fill();
+        ctx.closePath();
+
+        //plot m2
+        ctx.beginPath();
+        ctx.arc(Px(rk4x2a[nn]), Py(rk4y2a[nn]), 10, 0, Math.PI*2); //this is the circle
+        ctx.fillStyle = "#0000FF";
+        ctx.fill();
+        ctx.closePath();
+
+        //plot full EOM
+        ctx2.beginPath();
+        ctx2.lineWidth = 1;  
+        ctx2.strokeStyle = "#0000FF";
+        ctx2.moveTo(Px(rk4x2a[nn-1]),Py(rk4y2a[nn-1]));
+        ctx2.lineTo(Px(rk4x2a[nn]),Py(rk4y2a[nn])) ;
+        ctx2.stroke();
+        ctx2.closePath();
+        
+        ctx2.beginPath();
+        ctx2.lineWidth = 1;  
+        ctx2.strokeStyle = "#FF0000";
+        ctx2.moveTo(Px(rk4x1a[nn-1]),Py(rk4y1a[nn-1]));
+        ctx2.lineTo(Px(rk4x1a[nn]),Py(rk4y1a[nn])) ;
+        ctx2.stroke();
+        ctx2.closePath();
+
+        ctx.strokeStyle = "black"
+    } else if (running && plotType == "showChaos") { // SHOW CHAOS ------------------------------------------------------------------
+        ctx.clearRect(0, 0, cnvs.width, cnvs.height);
+        ++nn; //number of iteration
+
+        ctx.font = "20px Arial" ;
+        ctx.fillStyle = '#3b3b3b' ;
+
+        //update the angles
+        let tempTheta1;
+        let tempTheta2;
+        let tempOmega1;
+        let tempOmega2;
+        //Explicit Euler
+        tempTheta1 = eeTheta1;
+        tempTheta2 = eeTheta2;
+        tempOmega1 = eeOmega1;
+        tempOmega2 = eeOmega2;
+        eeTheta1 += eeOmega1 * dt + 0.5 * getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2) * dt * dt;
+        eeTheta2 += eeOmega2 * dt + 0.5 * getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2) * dt * dt;
+        eeOmega1 += 0.5 * (getAlpha1(eeTheta1, eeTheta2, tempOmega1, tempOmega2) + getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2)) * dt;
+        eeOmega2 += 0.5 * (getAlpha2(eeTheta1, eeTheta2, tempOmega1, tempOmega2) + getAlpha2(tempTheta1, tempTheta2, tempOmega1, tempOmega2)) * dt;
+
+        x1 = getCoords1General(eeTheta1)["x"];
+        y1 = getCoords1General(eeTheta1)["y"];
+        x2 = getCoords2General(eeTheta1, eeTheta2)["x"];
+        y2 = getCoords2General(eeTheta1, eeTheta2)["y"];
+        eex1a[nn] = x1;
+        eey1a[nn] = y1;
+        eex2a[nn] = x2;
+        eey2a[nn] = y2;
+
+        //Semi Implicit Euler
+        tempTheta1 = siTheta1;
+        tempTheta2 = siTheta2;
+        tempOmega1 = siOmega1;
+        tempOmega2 = siOmega2;
+        siTheta1 += siOmega1 * dt + 0.5 * getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2) * dt * dt;
+        siTheta2 += siOmega2 * dt + 0.5 * getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2) * dt * dt;
+        siOmega1 += 0.5 * (getAlpha1(siTheta1, siTheta2, tempOmega1, tempOmega2) + getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2)) * dt;
+        siOmega2 += 0.5 * (getAlpha2(siTheta1, siTheta2, tempOmega1, tempOmega2) + getAlpha2(tempTheta1, tempTheta2, tempOmega1, tempOmega2)) * dt;
+
+        x1 = getCoords1General(siTheta1)["x"];
+        y1 = getCoords1General(siTheta1)["y"];
+        x2 = getCoords2General(siTheta1, siTheta2)["x"];
+        y2 = getCoords2General(siTheta1, siTheta2)["y"];
+        six1a[nn] = x1;
+        siy1a[nn] = y1;
+        six2a[nn] = x2;
+        siy2a[nn] = y2;
+
+        //Verlet
+        tempTheta1 = vTheta1;
+        tempTheta2 = vTheta2;
+        tempOmega1 = vOmega1;
+        tempOmega2 = vOmega2;
+        vTheta1 += vOmega1 * dt + 0.5 * getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2) * dt * dt;
+        vTheta2 += vOmega2 * dt + 0.5 * getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2) * dt * dt;
+        vOmega1 += 0.5 * (getAlpha1(vTheta1, vTheta2, tempOmega1, tempOmega2) + getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2)) * dt;
+        vOmega2 += 0.5 * (getAlpha2(vTheta1, vTheta2, tempOmega1, tempOmega2) + getAlpha2(tempTheta1, tempTheta2, tempOmega1, tempOmega2)) * dt;
+
+        x1 = getCoords1General(vTheta1)["x"];
+        y1 = getCoords1General(vTheta1)["y"];
+        x2 = getCoords2General(vTheta1, vTheta2)["x"];
+        y2 = getCoords2General(vTheta1, vTheta2)["y"];
+        vx1a[nn] = x1;
+        vy1a[nn] = y1;
+        vx2a[nn] = x2;
+        vy2a[nn] = y2;
+        //RK4
+        tempTheta1 = rk4Theta1;
+        tempTheta2 = rk4Theta2;
+        tempOmega1 = rk4Omega1;
+        tempOmega2 = rk4Omega2;
+
+        rk4Theta1 += rk4Omega1 * dt + 0.5 * getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2) * dt * dt;
+        rk4Theta2 += rk4Omega2 * dt + 0.5 * getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2) * dt * dt;
+        rk4Omega1 += 0.5 * (getAlpha1(rk4Theta1, rk4Theta2, tempOmega1, tempOmega2) + getAlpha1(tempTheta1, tempTheta2, tempOmega1, tempOmega2)) * dt;
+        rk4Omega2 += 0.5 * (getAlpha2(rk4Theta1, rk4Theta2, tempOmega1, tempOmega2) + getAlpha2(tempTheta1, tempTheta2, tempOmega1, tempOmega2)) * dt;
+
+        x1 = getCoords1General(rk4Theta1)["x"];
+        y1 = getCoords1General(rk4Theta1)["y"];
+        x2 = getCoords2General(rk4Theta1, rk4Theta2)["x"];
+        y2 = getCoords2General(rk4Theta1, rk4Theta2)["y"];
+        rk4x1a[nn] = x1;
+        rk4y1a[nn] = y1;
+        rk4x2a[nn] = x2;
+        rk4y2a[nn] = y2;
+        //plot each integration style (balls and ropes)
+
+
+//------Explicit Euler
+        //Plot l1
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(Px(0),Py(0));
+        ctx.lineTo(Px(eex1a[nn]),Py(eey1a[nn]));
+        ctx.stroke();
+        ctx.closePath();
+
+        //plot l2
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(Px(eex1a[nn]),Py(eey1a[nn]));
+        ctx.lineTo(Px(eex2a[nn]),Py(eey2a[nn]));
+        ctx.stroke();
+        ctx.closePath();
+
+        //plot m1
+        ctx.beginPath();
+        ctx.arc(Px(eex1a[nn]), Py(eey1a[nn]), 10, 0, Math.PI*2); //this is the circle
+        ctx.fillStyle = "#FF0000";
+        ctx.fill();
+        ctx.closePath();
+
+        //plot m2
+        ctx.beginPath();
+        ctx.arc(Px(eex2a[nn]), Py(eey2a[nn]), 10, 0, Math.PI*2); //this is the circle
+        ctx.fillStyle = "#0000FF";
+        ctx.fill();
+        ctx.closePath();
+
+        //plot full EOM
+        ctx2.beginPath();
+        ctx2.lineWidth = 1;  
+        ctx2.strokeStyle = "#0000FF";
+        ctx2.moveTo(Px(eex2a[nn-1]),Py(eey2a[nn-1]));
+        ctx2.lineTo(Px(eex2a[nn]),Py(eey2a[nn])) ;
+        ctx2.stroke();
+        ctx2.closePath();
+        
+        ctx2.beginPath();
+        ctx2.lineWidth = 1;  
+        ctx2.strokeStyle = "#FF0000";
+        ctx2.moveTo(Px(eex1a[nn-1]),Py(eey1a[nn-1]));
+        ctx2.lineTo(Px(eex1a[nn]),Py(eey1a[nn])) ;
+        ctx2.stroke();
+        ctx2.closePath();
+
+        ctx.strokeStyle = "black"
+
+//------Semi Implicit Euler
+
+        //Plot l1
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(Px(0),Py(0));
+        ctx.lineTo(Px(six1a[nn]),Py(siy1a[nn]));
+        ctx.stroke();
+        ctx.closePath();
+
+        //plot l2
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(Px(six1a[nn]),Py(siy1a[nn]));
+        ctx.lineTo(Px(six2a[nn]),Py(siy2a[nn]));
+        ctx.stroke();
+        ctx.closePath();
+
+        //plot m1
+        ctx.beginPath();
+        ctx.arc(Px(six1a[nn]), Py(siy1a[nn]), 10, 0, Math.PI*2); //this is the circle
+        ctx.fillStyle = "#FF0000";
+        ctx.fill();
+        ctx.closePath();
+
+        //plot m2
+        ctx.beginPath();
+        ctx.arc(Px(six2a[nn]), Py(siy2a[nn]), 10, 0, Math.PI*2); //this is the circle
+        ctx.fillStyle = "#0000FF";
+        ctx.fill();
+        ctx.closePath();
+
+        //plot full EOM
+        ctx2.beginPath();
+        ctx2.lineWidth = 1;  
+        ctx2.strokeStyle = "#0000FF";
+        ctx2.moveTo(Px(six2a[nn-1]),Py(siy2a[nn-1]));
+        ctx2.lineTo(Px(six2a[nn]),Py(siy2a[nn])) ;
+        ctx2.stroke();
+        ctx2.closePath();
+        
+        ctx2.beginPath();
+        ctx2.lineWidth = 1;  
+        ctx2.strokeStyle = "#FF0000";
+        ctx2.moveTo(Px(six1a[nn-1]),Py(siy1a[nn-1]));
+        ctx2.lineTo(Px(six1a[nn]),Py(siy1a[nn])) ;
+        ctx2.stroke();
+        ctx2.closePath();
+
+        ctx.strokeStyle = "black"
+
+//------Verlet
+
+        //Plot l1
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(Px(0),Py(0));
+        ctx.lineTo(Px(vx1a[nn]),Py(vy1a[nn]));
+        ctx.stroke();
+        ctx.closePath();
+
+        //plot l2
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(Px(vx1a[nn]),Py(vy1a[nn]));
+        ctx.lineTo(Px(vx2a[nn]),Py(vy2a[nn]));
+        ctx.stroke();
+        ctx.closePath();
+
+        //plot m1
+        ctx.beginPath();
+        ctx.arc(Px(vx1a[nn]), Py(vy1a[nn]), 10, 0, Math.PI*2); //this is the circle
+        ctx.fillStyle = "#FF0000";
+        ctx.fill();
+        ctx.closePath();
+
+        //plot m2
+        ctx.beginPath();
+        ctx.arc(Px(vx2a[nn]), Py(vy2a[nn]), 10, 0, Math.PI*2); //this is the circle
+        ctx.fillStyle = "#0000FF";
+        ctx.fill();
+        ctx.closePath();
+
+        //plot full EOM
+        ctx2.beginPath();
+        ctx2.lineWidth = 1;  
+        ctx2.strokeStyle = "#0000FF";
+        ctx2.moveTo(Px(vx2a[nn-1]),Py(vy2a[nn-1]));
+        ctx2.lineTo(Px(vx2a[nn]),Py(vy2a[nn])) ;
+        ctx2.stroke();
+        ctx2.closePath();
+        
+        ctx2.beginPath();
+        ctx2.lineWidth = 1;  
+        ctx2.strokeStyle = "#FF0000";
+        ctx2.moveTo(Px(vx1a[nn-1]),Py(vy1a[nn-1]));
+        ctx2.lineTo(Px(vx1a[nn]),Py(vy1a[nn])) ;
+        ctx2.stroke();
+        ctx2.closePath();
+
+        ctx.strokeStyle = "black"
+//------RK4
+        //Plot l1
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(Px(0),Py(0));
+        ctx.lineTo(Px(rk4x1a[nn]),Py(rk4y1a[nn]));
+        ctx.stroke();
+        ctx.closePath();
+
+        //plot l2
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(Px(rk4x1a[nn]),Py(rk4y1a[nn]));
+        ctx.lineTo(Px(rk4x2a[nn]),Py(rk4y2a[nn]));
+        ctx.stroke();
+        ctx.closePath();
+
+        //plot m1
+        ctx.beginPath();
+        ctx.arc(Px(rk4x1a[nn]), Py(rk4y1a[nn]), 10, 0, Math.PI*2); //this is the circle
+        ctx.fillStyle = "#FF0000";
+        ctx.fill();
+        ctx.closePath();
+
+        //plot m2
+        ctx.beginPath();
+        ctx.arc(Px(rk4x2a[nn]), Py(rk4y2a[nn]), 10, 0, Math.PI*2); //this is the circle
+        ctx.fillStyle = "#0000FF";
+        ctx.fill();
+        ctx.closePath();
+
+        //plot full EOM
+        ctx2.beginPath();
+        ctx2.lineWidth = 1;  
+        ctx2.strokeStyle = "#0000FF";
+        ctx2.moveTo(Px(rk4x2a[nn-1]),Py(rk4y2a[nn-1]));
+        ctx2.lineTo(Px(rk4x2a[nn]),Py(rk4y2a[nn])) ;
+        ctx2.stroke();
+        ctx2.closePath();
+        
+        ctx2.beginPath();
+        ctx2.lineWidth = 1;  
+        ctx2.strokeStyle = "#FF0000";
+        ctx2.moveTo(Px(rk4x1a[nn-1]),Py(rk4y1a[nn-1]));
+        ctx2.lineTo(Px(rk4x1a[nn]),Py(rk4y1a[nn])) ;
+        ctx2.stroke();
+        ctx2.closePath();
+
+        ctx.strokeStyle = "black"
+    }
+    setTimeout(run,1);
+}
+</script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v52afc6f149f6479b8c77fa569edb01181681764108816" integrity="sha512-jGCTpDpBAYDGNYR5ztKt4BQPGef1P0giN6ZGVUi835kFF88FOmmn8jBQWNgrNd8g/Yu421NdgWhwQoaOPFflDw==" data-cf-beacon='{"rayId":"7c04551e4fe2b077","version":"2023.3.0","r":1,"token":"8efc07da9ba64500821516a4e619fa29","si":100}' crossorigin="anonymous"></script>
+</body>
+</html>
